@@ -79,3 +79,16 @@ func InvalidSomeEnumInitialization() SomeEnum {
 	// TODO: And that, too.
 	// return -1
 }
+
+// TODO: This is a weird behavior...
+// #constructor[newStructB]
+type (
+	structA struct{}
+	structB struct{} // want structB:"constructor is newStructB"
+)
+
+func newStructB() *structB {
+	return nil
+}
+
+var b = structB{} // want `"structB" must be constructed with "newStructB"`
