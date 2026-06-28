@@ -62,3 +62,20 @@ func newSomeStruct() (string, *someStruct) { return "", nil }
 var someS = someStruct{} // want `"someStruct" must be constructed with "newSomeStruct"`
 
 var _, someS2 = newSomeStruct()
+
+// #constructor[NewSomeEnum]
+type SomeEnum int // want SomeEnum:`constructor is NewSomeEnum`
+
+func NewSomeEnum() SomeEnum {
+	n := SomeEnum(1)
+
+	return n
+}
+
+func InvalidSomeEnumInitialization() SomeEnum {
+	// TODO: This case would be nice to catch.
+	return SomeEnum(-1)
+
+	// TODO: And that, too.
+	// return -1
+}
