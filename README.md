@@ -27,6 +27,15 @@ The directive may be surrounded by other text:
 type Foo struct {}
 
 func MakeFoo() Foo { /* */ }
+```
+
+Multiple constructors may be specified and types other than structs may be used:
+```go
+//#constructor[NewMyInt1, NewMyInt2]
+type MyInt int
+
+func NewMyInt1() MyInt { /* */ }
+func NewMyInt2() MyInt { /* */ }
 ````
 
 Run the checks:

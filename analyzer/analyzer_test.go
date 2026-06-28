@@ -2,6 +2,7 @@ package analyzer
 
 import (
 	"path/filepath"
+	"slices"
 	"testing"
 
 	"golang.org/x/tools/go/analysis/analysistest"
@@ -25,29 +26,34 @@ func Test_constructorNameFromDocLine(t *testing.T) {
 	type testCase struct {
 		name    string
 		docLine string
-		want    string
+		want    []string
 	}
 
 	testCases := []testCase{
 		{
 			name:    "1",
 			docLine: "// use #constructor[ConstructB].",
-			want:    "ConstructB",
+			want:    []string{"ConstructB"},
 		},
 		{
 			name:    "2",
 			docLine: "// #constructor[BazInit]",
-			want:    "BazInit",
+			want:    []string{"BazInit"},
 		},
 		{
 			name:    "3",
 			docLine: "// #constructor[]",
-			want:    "",
+			want:    nil,
 		},
 		{
 			name:    "4",
 			docLine: "//    #constructor[12] ",
-			want:    "12",
+			want:    []string{"12"},
+		},
+		{
+			name:    "5",
+			docLine: "//    #constructor[ 12  , abc] ",
+			want:    []string{"12", "abc"},
 		},
 	}
 
@@ -55,10 +61,10 @@ func Test_constructorNameFromDocLine(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			got := constructorNameFromDocLine(tc.docLine)
+			got := constructorNamesFromDocLine(tc.docLine)
 
-			if got != tc.want {
-				t.Fatalf("got: %q, want: %q", got, tc.want)
+			if !slices.Equal(got, tc.want) {
+				t.Fatalf("got: %v, want: %v", got, tc.want)
 			}
 		})
 	}

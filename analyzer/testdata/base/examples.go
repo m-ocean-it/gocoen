@@ -3,7 +3,7 @@ package base
 import "pkg"
 
 // #constructor[NewFoo]
-type Foo struct{} // want Foo:"constructor is NewFoo"
+type Foo struct{ a int } // want Foo:`constructors are "NewFoo"`
 
 // Baz is a struct.
 //
@@ -16,10 +16,10 @@ func NewFoo() Foo {
 }
 
 func FooNotConstructedProperly() {
-	f1 := Foo{}    // want `"Foo" must be constructed with "NewFoo"`
-	var f2 Foo     // want `"Foo" must be constructed with "NewFoo"`
-	var f3 *Foo    // want `"Foo" must be constructed with "NewFoo"`
-	f4 := new(Foo) // want `"Foo" must be constructed with "NewFoo"`
+	f1 := Foo{a: 2} // want `"Foo" must be constructed with one of these constructors: "NewFoo"`
+	var f2 Foo      // want `"Foo" must be constructed with one of these constructors: "NewFoo"`
+	var f3 *Foo     // want `"Foo" must be constructed with one of these constructors: "NewFoo"`
+	f4 := new(Foo)  // want `"Foo" must be constructed with one of these constructors: "NewFoo"`
 
 	_, _, _, _ = f1, f2, f3, f4
 }
@@ -30,7 +30,7 @@ func FooConstructedProperly() {
 }
 
 func BarNotConstructedProperly() {
-	_ = pkg.Bar{} // want `"Bar" must be constructed with "ConstructB"`
+	_ = pkg.Bar{} // want `"Bar" must be constructed with one of these constructors: "ConstructB"`
 }
 
 func BarConstructedProperly() {
@@ -55,16 +55,16 @@ func notWhatever() hohoho {
 }
 
 // #constructor[newSomeStruct]
-type someStruct struct{} // want someStruct:"constructor is newSomeStruct"
+type someStruct struct{} // want someStruct:`constructors are "newSomeStruct"`
 
 func newSomeStruct() (string, *someStruct) { return "", nil }
 
-var someS = someStruct{} // want `"someStruct" must be constructed with "newSomeStruct"`
+var someS = someStruct{} // want `"someStruct" must be constructed with one of these constructors: "newSomeStruct"`
 
 var _, someS2 = newSomeStruct()
 
 // #constructor[NewSomeEnum]
-type SomeEnum int // want SomeEnum:`constructor is NewSomeEnum`
+type SomeEnum int // want SomeEnum:`constructors are "NewSomeEnum"`
 
 func NewSomeEnum() SomeEnum {
 	n := SomeEnum(1)
@@ -80,15 +80,33 @@ func InvalidSomeEnumInitialization() SomeEnum {
 	// return -1
 }
 
-// TODO: This is a weird behavior...
 // #constructor[newStructB]
-type (
+type ( // want `Multiple specs are not supported`
 	structA struct{}
-	structB struct{} // want structB:"constructor is newStructB"
+	structB struct{}
 )
 
 func newStructB() *structB {
 	return nil
 }
 
-var b = structB{} // want `"structB" must be constructed with "newStructB"`
+var b = structB{}
+
+func NewX() TypeWithMultipleConstructors {
+	return nil
+}
+
+func NewY() TypeWithMultipleConstructors {
+	return nil
+}
+
+// #constructor[NewX, NewY]
+type TypeWithMultipleConstructors map[string]map[string]int // want TypeWithMultipleConstructors:`constructors are "NewX", "NewY"`
+
+var (
+	x  = NewX()
+	y  = NewY()
+	z  = make(TypeWithMultipleConstructors) // TODO: detect make() usage.
+	xx TypeWithMultipleConstructors         // want `"TypeWithMultipleConstructors" must be constructed with one of these constructors: "NewX", "NewY"`
+	yy = TypeWithMultipleConstructors{}     // want `"TypeWithMultipleConstructors" must be constructed with one of these constructors: "NewX", "NewY"`
+)

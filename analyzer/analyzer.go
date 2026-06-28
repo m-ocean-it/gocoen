@@ -16,14 +16,31 @@ import (
 )
 
 type ConstructorFact struct {
-	ConstructorName string
-	Pos             token.Pos
-	End             token.Pos
+	Entries []ConstructorFactEntry
+}
+
+func (cf ConstructorFact) ConstructorNamesString() string {
+	constructorNames := make([]string, 0, len(cf.Entries))
+	for _, e := range cf.Entries {
+		constructorNames = append(constructorNames, `"`+e.ConstructorName+`"`)
+	}
+
+	return strings.Join(constructorNames, ", ")
+}
+
+type ConstructorFactEntry struct {
+	ConstructorName                string
+	ConstructorPos, ConstructorEnd token.Pos
 }
 
 func (f *ConstructorFact) AFact() {}
 func (f *ConstructorFact) String() string {
-	return "constructor is " + f.ConstructorName
+	constructorNames := make([]string, 0, len(f.Entries))
+	for _, e := range f.Entries {
+		constructorNames = append(constructorNames, e.ConstructorName)
+	}
+
+	return "constructors are " + f.ConstructorNamesString()
 }
 
 func NewAnalyzer() *analysis.Analyzer {
@@ -43,16 +60,9 @@ func NewAnalyzer() *analysis.Analyzer {
 	return a
 }
 
-type initedEntry struct {
+type initEntry struct {
 	pos token.Pos
 	typ *types.TypeName
-}
-
-type data struct {
-	zeroValues        []initedEntry
-	nilValues         []initedEntry
-	compositeLiterals []initedEntry
-	typeAliases       []initedEntry
 }
 
 type linter struct{}
@@ -77,79 +87,53 @@ func (l *linter) run(pass *analysis.Pass) (any, error) {
 		(*ast.ValueSpec)(nil),
 	}
 
-	data := data{}
+	inits := []initEntry{}
 
 	for node := range insp.PreorderSeq(nodeFilter...) {
-		l.processNode(pass, node, &data)
+		l.processNode(pass, node, &inits)
 	}
 
-	for _, entry := range data.compositeLiterals {
+	for _, initEntry := range inits {
 		var f ConstructorFact
-		ok := pass.ImportObjectFact(entry.typ, &f)
+		ok := pass.ImportObjectFact(initEntry.typ, &f)
 		if !ok {
 			continue
 		}
 
-		// if used inside T's constructor - ignore
-		if entry.pos >= f.Pos && entry.pos < f.End {
+		var initedWithinOneOfConstructors bool
+		for _, factEntry := range f.Entries {
+			if initEntry.pos >= factEntry.ConstructorPos && initEntry.pos < factEntry.ConstructorEnd {
+				initedWithinOneOfConstructors = true
+
+				break
+			}
+		}
+		if initedWithinOneOfConstructors {
 			continue
 		}
 
 		pass.Report(analysis.Diagnostic{
-			Message: fmt.Sprintf(`"%s" must be constructed with "%s"`, entry.typ.Name(), f.ConstructorName),
-			Pos:     entry.pos,
-		})
-	}
-
-	for _, entry := range data.zeroValues {
-		var f ConstructorFact
-		ok := pass.ImportObjectFact(entry.typ, &f)
-		if !ok {
-			continue
-		}
-
-		// if used inside T's constructor - ignore
-		if entry.pos >= f.Pos && entry.pos < f.End {
-			continue
-		}
-
-		pass.Report(analysis.Diagnostic{
-			Message: fmt.Sprintf(`"%s" must be constructed with "%s"`, entry.typ.Name(), f.ConstructorName),
-			Pos:     entry.pos,
-		})
-	}
-
-	for _, entry := range data.nilValues {
-		var f ConstructorFact
-		ok := pass.ImportObjectFact(entry.typ, &f)
-		if !ok {
-			continue
-		}
-
-		// if used inside T's constructor - ignore
-		if entry.pos >= f.Pos && entry.pos < f.End {
-			continue
-		}
-
-		pass.Report(analysis.Diagnostic{
-			Message: fmt.Sprintf(`"%s" must be constructed with "%s"`, entry.typ.Name(), f.ConstructorName),
-			Pos:     entry.pos,
+			Message: fmt.Sprintf(`"%s" must be constructed with one of these constructors: %s`,
+				initEntry.typ.Name(),
+				f.ConstructorNamesString(),
+			),
+			Pos: initEntry.pos,
 		})
 	}
 
 	return nil, nil //nolint:nilnil
 }
 
-func (l *linter) processNode(pass *analysis.Pass, node ast.Node, data *data) {
+func (l *linter) processNode(pass *analysis.Pass, node ast.Node, inits *[]initEntry) {
 	switch n := node.(type) {
 	case *ast.GenDecl:
 		l.processGenDecl(pass, n)
 	case *ast.CallExpr:
-		l.processCallExpr(pass, n, data)
+		l.processCallExpr(pass, n, inits)
 	case *ast.CompositeLit:
-		l.processCompositeLit(pass, n, data)
+		l.processCompositeLit(pass, n, inits)
 	case *ast.ValueSpec:
-		l.processValueSpec(pass, n, data)
+		l.processValueSpec(pass, n, inits)
 	}
 }
 
@@ -164,72 +148,107 @@ func (l *linter) processGenDecl(pass *analysis.Pass, genDecl *ast.GenDecl) {
 		return
 	}
 
-	var constructorName string
+	var constructorNames []string
 	for _, commentLine := range genDecl.Doc.List {
-		constructorName = constructorNameFromDocLine(commentLine.Text)
-		if constructorName != "" {
+		constructorNames = constructorNamesFromDocLine(commentLine.Text)
+		if len(constructorNames) > 0 {
 			break
 		}
 	}
-	if constructorName == "" {
+	if len(constructorNames) == 0 {
 		return
 	}
 
-	constructorObject := pass.Pkg.Scope().Lookup(constructorName)
-	if constructorObject == nil {
+	if len(genDecl.Specs) == 0 {
 		pass.Report(analysis.Diagnostic{
 			Pos:     genDecl.Pos(),
 			End:     genDecl.End(),
-			Message: fmt.Sprintf("Constructor %q does not exist in the same package", constructorName),
+			Message: "No type specs are present",
 		})
 
 		return
 	}
-	constructorFunction, ok := constructorObject.(*types.Func)
+
+	if len(genDecl.Specs) > 1 {
+		pass.Report(analysis.Diagnostic{
+			Pos:     genDecl.Pos(),
+			End:     genDecl.End(),
+			Message: "Multiple specs are not supported",
+		})
+
+		return
+	}
+
+	typeSpec, ok := genDecl.Specs[0].(*ast.TypeSpec)
 	if !ok {
 		pass.Report(analysis.Diagnostic{
 			Pos:     genDecl.Pos(),
 			End:     genDecl.End(),
-			Message: fmt.Sprintf("Constructor %q must be a function", constructorName),
-		})
-
-		return
-	}
-	constructorPos := constructorFunction.Pos()
-	fnScope := constructorFunction.Scope()
-	if fnScope == nil {
-		pass.Report(analysis.Diagnostic{
-			Pos:     genDecl.Pos(),
-			End:     genDecl.End(),
-			Message: fmt.Sprintf("Constructor %q is invalid", constructorName),
-		})
-
-		return
-	}
-	constructorEnd := fnScope.End()
-
-	constructorReturnVars := constructorFunction.Signature().Results()
-	var returnTypes []types.Type
-	for v := range constructorReturnVars.Variables() {
-		returnTypes = append(returnTypes, v.Type())
-	}
-	if len(returnTypes) == 0 {
-		pass.Report(analysis.Diagnostic{
-			Pos:     genDecl.Pos(),
-			End:     genDecl.End(),
-			Message: fmt.Sprintf("Constructor %q does not return anything", constructorName),
+			Message: "Must be a type spec",
 		})
 
 		return
 	}
 
-	for _, s := range genDecl.Specs {
-		typeSpec, ok := s.(*ast.TypeSpec)
-		if !ok {
-			continue
+	typeSpecType := pass.TypesInfo.TypeOf(typeSpec.Name)
+	if typeSpecType == nil {
+		return
+	}
+	typeSpecObj := pass.TypesInfo.ObjectOf(typeSpec.Name)
+	if typeSpecObj == nil {
+		return
+	}
+
+	entries := make([]ConstructorFactEntry, 0, len(constructorNames))
+
+	for _, cName := range constructorNames {
+		constructorObject := pass.Pkg.Scope().Lookup(cName)
+		if constructorObject == nil {
+			pass.Report(analysis.Diagnostic{
+				Pos:     genDecl.Pos(),
+				End:     genDecl.End(),
+				Message: fmt.Sprintf("Constructor %q does not exist in the same package", cName),
+			})
+
+			return
 		}
+		constructorFunction, ok := constructorObject.(*types.Func)
+		if !ok {
+			pass.Report(analysis.Diagnostic{
+				Pos:     genDecl.Pos(),
+				End:     genDecl.End(),
+				Message: fmt.Sprintf("Constructor %q must be a function", cName),
+			})
 
-		typeSpecType := pass.TypesInfo.TypeOf(typeSpec.Name)
+			return
+		}
+		constructorPos := constructorFunction.Pos()
+		fnScope := constructorFunction.Scope()
+		if fnScope == nil {
+			pass.Report(analysis.Diagnostic{
+				Pos:     genDecl.Pos(),
+				End:     genDecl.End(),
+				Message: fmt.Sprintf("Constructor %q is invalid", cName),
+			})
+
+			return
+		}
+		constructorEnd := fnScope.End()
+
+		constructorReturnVars := constructorFunction.Signature().Results()
+		var returnTypes []types.Type
+		for v := range constructorReturnVars.Variables() {
+			returnTypes = append(returnTypes, v.Type())
+		}
+		if len(returnTypes) == 0 {
+			pass.Report(analysis.Diagnostic{
+				Pos:     genDecl.Pos(),
+				End:     genDecl.End(),
+				Message: fmt.Sprintf("Constructor %q does not return anything", cName),
+			})
+
+			return
+		}
 
 		if !slices.ContainsFunc(
 			returnTypes,
@@ -237,31 +256,31 @@ func (l *linter) processGenDecl(pass *analysis.Pass, genDecl *ast.GenDecl) {
 				return types.Identical(typeSpecType, rt) || types.Identical(types.NewPointer(typeSpecType), rt)
 			},
 		) {
-			continue
+			pass.Report(analysis.Diagnostic{
+				Pos:     genDecl.Pos(),
+				End:     genDecl.End(),
+				Message: fmt.Sprintf("Constructor %q does not return the corresponding type", cName),
+			})
+
+			return
 		}
 
-		typeObj := pass.TypesInfo.ObjectOf(typeSpec.Name)
-		if typeObj == nil {
-			continue
-		}
-
-		pass.ExportObjectFact(typeObj, &ConstructorFact{
-			ConstructorName: constructorName,
-			Pos:             constructorPos,
-			End:             constructorEnd,
+		entries = append(entries, ConstructorFactEntry{
+			ConstructorName: cName,
+			ConstructorPos:  constructorPos,
+			ConstructorEnd:  constructorEnd,
 		})
 
-		return
+		continue
+
 	}
 
-	pass.Report(analysis.Diagnostic{
-		Pos:     genDecl.Pos(),
-		End:     genDecl.End(),
-		Message: fmt.Sprintf("Constructor %q does not return the corresponding type", constructorName),
-	})
+	if len(entries) > 0 {
+		pass.ExportObjectFact(typeSpecObj, &ConstructorFact{Entries: entries})
+	}
 }
 
-func (l *linter) processCallExpr(pass *analysis.Pass, callExpr *ast.CallExpr, data *data) {
+func (l *linter) processCallExpr(pass *analysis.Pass, callExpr *ast.CallExpr, inits *[]initEntry) {
 	fn, ok := callExpr.Fun.(*ast.Ident)
 	if !ok {
 		return
@@ -295,13 +314,13 @@ func (l *linter) processCallExpr(pass *analysis.Pass, callExpr *ast.CallExpr, da
 		return
 	}
 
-	data.zeroValues = append(data.zeroValues, initedEntry{
+	*inits = append(*inits, initEntry{
 		pos: callExpr.Pos(),
 		typ: namedTypeObj,
 	})
 }
 
-func (l *linter) processCompositeLit(pass *analysis.Pass, compositeLit *ast.CompositeLit, data *data) {
+func (l *linter) processCompositeLit(pass *analysis.Pass, compositeLit *ast.CompositeLit, inits *[]initEntry) {
 	ident := typeIdent(compositeLit.Type)
 	if ident == nil {
 		return
@@ -322,22 +341,13 @@ func (l *linter) processCompositeLit(pass *analysis.Pass, compositeLit *ast.Comp
 		return
 	}
 
-	if compositeLit.Elts == nil {
-		data.zeroValues = append(data.zeroValues, initedEntry{
-			pos: compositeLit.Pos(),
-			typ: namedTypeObj,
-		})
-
-		return
-	}
-
-	data.compositeLiterals = append(data.compositeLiterals, initedEntry{
+	*inits = append(*inits, initEntry{
 		pos: compositeLit.Pos(),
 		typ: namedTypeObj,
 	})
 }
 
-func (l *linter) processValueSpec(pass *analysis.Pass, valueSpec *ast.ValueSpec, data *data) {
+func (l *linter) processValueSpec(pass *analysis.Pass, valueSpec *ast.ValueSpec, inits *[]initEntry) {
 	switch t := valueSpec.Type.(type) {
 	case *ast.Ident:
 		typeObj := pass.TypesInfo.TypeOf(t)
@@ -355,7 +365,7 @@ func (l *linter) processValueSpec(pass *analysis.Pass, valueSpec *ast.ValueSpec,
 			return
 		}
 
-		data.zeroValues = append(data.zeroValues, initedEntry{
+		*inits = append(*inits, initEntry{
 			pos: valueSpec.Pos(),
 			typ: namedTypeObj,
 		})
@@ -380,7 +390,7 @@ func (l *linter) processValueSpec(pass *analysis.Pass, valueSpec *ast.ValueSpec,
 			return
 		}
 
-		data.nilValues = append(data.nilValues, initedEntry{
+		*inits = append(*inits, initEntry{
 			pos: valueSpec.Pos(),
 			typ: namedTypeObj,
 		})
@@ -389,21 +399,24 @@ func (l *linter) processValueSpec(pass *analysis.Pass, valueSpec *ast.ValueSpec,
 
 var directiveRegex = regexp.MustCompile(`#constructor\[([^\]\r\n]+)\]`)
 
-func constructorNameFromDocLine(docLine string) string {
+func constructorNamesFromDocLine(docLine string) []string {
 	docLine = strings.TrimPrefix(docLine, "// ")
 	docLine = strings.TrimSpace(docLine)
 	if docLine == "" {
-		return ""
+		return nil
 	}
 
 	m := directiveRegex.FindStringSubmatch(docLine)
 	if len(m) != 2 {
-		return ""
+		return nil
 	}
 
-	constructorName := m[1]
+	var constructorNames []string
+	for cn := range strings.SplitSeq(m[1], ",") {
+		constructorNames = append(constructorNames, strings.TrimSpace(cn))
+	}
 
-	return constructorName
+	return constructorNames
 }
 
 func typeIdent(expr ast.Expr) *ast.Ident {
