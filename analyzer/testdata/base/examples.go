@@ -36,3 +36,8 @@ func BarNotConstructedProperly() {
 func BarConstructedProperly() {
 	_ = pkg.ConstructB()
 }
+
+// #constructor[NewFooBarBaz]
+type FooBarBaz struct{} // want `Constructor "NewFooBarBaz" must be a function`
+
+type NewFooBarBaz struct{}

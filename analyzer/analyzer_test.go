@@ -7,7 +7,7 @@ import (
 	"golang.org/x/tools/go/analysis/analysistest"
 )
 
-func TestAnalyzer_config(t *testing.T) {
+func TestAnalyzer(t *testing.T) {
 	t.Parallel()
 
 	analyzer := NewAnalyzer()
