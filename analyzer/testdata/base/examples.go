@@ -41,3 +41,24 @@ func BarConstructedProperly() {
 type FooBarBaz struct{} // want `Constructor "NewFooBarBaz" must be a function`
 
 type NewFooBarBaz struct{}
+
+// #constructor[andABottleOfRum]
+type hohoho struct{} // want `Constructor "andABottleOfRum" does not return anything`
+
+func andABottleOfRum() {}
+
+// #constructor[notWhatever]
+type whatever struct{} // want `Constructor "notWhatever" does not return the corresponding type`
+
+func notWhatever() hohoho {
+	return hohoho{}
+}
+
+// #constructor[newSomeStruct]
+type someStruct struct{} // want someStruct:"constructor is newSomeStruct"
+
+func newSomeStruct() (string, *someStruct) { return "", nil }
+
+var someS = someStruct{} // want `"someStruct" must be constructed with "newSomeStruct"`
+
+var _, someS2 = newSomeStruct()

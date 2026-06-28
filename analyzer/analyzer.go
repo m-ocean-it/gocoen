@@ -7,6 +7,7 @@ import (
 	"go/token"
 	"go/types"
 	"regexp"
+	"slices"
 	"strings"
 
 	"golang.org/x/tools/go/analysis"
@@ -207,11 +208,35 @@ func (l *linter) processGenDecl(pass *analysis.Pass, genDecl *ast.GenDecl) {
 	}
 	constructorEnd := fnScope.End()
 
-	// TODO: check if constructor returns the correct type.
+	constructorReturnVars := constructorFunction.Signature().Results()
+	var returnTypes []types.Type
+	for v := range constructorReturnVars.Variables() {
+		returnTypes = append(returnTypes, v.Type())
+	}
+	if len(returnTypes) == 0 {
+		pass.Report(analysis.Diagnostic{
+			Pos:     genDecl.Pos(),
+			End:     genDecl.End(),
+			Message: fmt.Sprintf("Constructor %q does not return anything", constructorName),
+		})
+
+		return
+	}
 
 	for _, s := range genDecl.Specs {
 		typeSpec, ok := s.(*ast.TypeSpec)
 		if !ok {
+			continue
+		}
+
+		typeSpecType := pass.TypesInfo.TypeOf(typeSpec.Name)
+
+		if !slices.ContainsFunc(
+			returnTypes,
+			func(rt types.Type) bool {
+				return types.Identical(typeSpecType, rt) || types.Identical(types.NewPointer(typeSpecType), rt)
+			},
+		) {
 			continue
 		}
 
@@ -225,7 +250,15 @@ func (l *linter) processGenDecl(pass *analysis.Pass, genDecl *ast.GenDecl) {
 			Pos:             constructorPos,
 			End:             constructorEnd,
 		})
+
+		return
 	}
+
+	pass.Report(analysis.Diagnostic{
+		Pos:     genDecl.Pos(),
+		End:     genDecl.End(),
+		Message: fmt.Sprintf("Constructor %q does not return the corresponding type", constructorName),
+	})
 }
 
 func (l *linter) processCallExpr(pass *analysis.Pass, callExpr *ast.CallExpr, data *data) {
