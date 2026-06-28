@@ -96,6 +96,10 @@ func NewX() TypeWithMultipleConstructors {
 	return nil
 }
 
+func NewXNotSpecified() TypeWithMultipleConstructors {
+	return nil
+}
+
 func NewY() TypeWithMultipleConstructors {
 	return nil
 }
@@ -104,9 +108,19 @@ func NewY() TypeWithMultipleConstructors {
 type TypeWithMultipleConstructors map[string]map[string]int // want TypeWithMultipleConstructors:`constructors are "NewX", "NewY"`
 
 var (
-	x  = NewX()
-	y  = NewY()
-	z  = make(TypeWithMultipleConstructors) // want `"TypeWithMultipleConstructors" must be constructed with one of these constructors: "NewX", "NewY"`
-	xx TypeWithMultipleConstructors         // want `"TypeWithMultipleConstructors" must be constructed with one of these constructors: "NewX", "NewY"`
-	yy = TypeWithMultipleConstructors{}     // want `"TypeWithMultipleConstructors" must be constructed with one of these constructors: "NewX", "NewY"`
+	x   = NewX()
+	xx  = NewXNotSpecified() // TODO: should this trigger a warning?
+	y   = NewY()
+	z   = make(TypeWithMultipleConstructors) // want `"TypeWithMultipleConstructors" must be constructed with one of these constructors: "NewX", "NewY"`
+	xxx TypeWithMultipleConstructors         // want `"TypeWithMultipleConstructors" must be constructed with one of these constructors: "NewX", "NewY"`
+	yy  = TypeWithMultipleConstructors{}     // want `"TypeWithMultipleConstructors" must be constructed with one of these constructors: "NewX", "NewY"`
 )
+
+// #constructor[NewMyChannel]
+type MyChannel chan int // want MyChannel:`constructors are "NewMyChannel"`
+
+func NewMyChannel() MyChannel {
+	return make(MyChannel)
+}
+
+var ch = make(MyChannel) // want `"MyChannel" must be constructed with one of these constructors: "NewMyChannel"`
