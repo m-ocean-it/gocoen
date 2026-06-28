@@ -123,4 +123,19 @@ func NewMyChannel() MyChannel {
 	return make(MyChannel)
 }
 
-var ch = make(MyChannel) // want `"MyChannel" must be constructed with one of these constructors: "NewMyChannel"`
+var ch = make(MyChannel)      // want `"MyChannel" must be constructed with one of these constructors: "NewMyChannel"`
+var ch1 = make(MyChannel, 10) // want `"MyChannel" must be constructed with one of these constructors: "NewMyChannel"`
+
+// #constructor[NewMySliceInvalid]
+type MySliceInvalid []int // want `Constructor "NewMySliceInvalid" does not return the corresponding type`
+
+func NewMySliceInvalid() []int {
+	return nil
+}
+
+// #constructor[NewMySlice]
+type MySlice []int // want MySlice:`constructors are "NewMySlice"`
+
+func NewMySlice(someArg string) MySlice {
+	return make(MySlice, 0, 100)
+}

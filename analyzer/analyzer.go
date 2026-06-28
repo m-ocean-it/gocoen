@@ -290,7 +290,7 @@ func (l *linter) processCallExpr(pass *analysis.Pass, callExpr *ast.CallExpr, in
 		return
 	}
 
-	if len(callExpr.Args) != 1 {
+	if len(callExpr.Args) == 0 {
 		return
 	}
 
