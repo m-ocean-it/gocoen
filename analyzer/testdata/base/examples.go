@@ -5,6 +5,8 @@ import "pkg"
 // #constructor[NewFoo]
 type Foo struct{} // want Foo:"constructor is NewFoo"
 
+// Baz is a struct.
+//
 // #constructor[BazInit]
 type Baz struct { // want `Constructor "BazInit" does not exist in the same package`
 }

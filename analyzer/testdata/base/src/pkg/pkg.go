@@ -1,6 +1,9 @@
 package pkg
 
-// #constructor[ConstructB]
+// Please,
+// use #constructor[ConstructB].
+//
+// Bar is some struct.
 type Bar struct{}
 
 func ConstructB() Bar {

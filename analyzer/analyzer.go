@@ -163,9 +163,13 @@ func (l *linter) processGenDecl(pass *analysis.Pass, genDecl *ast.GenDecl) {
 		return
 	}
 
-	firstComment := genDecl.Doc.List[0]
-
-	constructorName := parseDoc(firstComment.Text)
+	var constructorName string
+	for _, commentLine := range genDecl.Doc.List {
+		constructorName = constructorNameFromDocLine(commentLine.Text)
+		if constructorName != "" {
+			break
+		}
+	}
 	if constructorName == "" {
 		return
 	}
@@ -350,26 +354,23 @@ func (l *linter) processValueSpec(pass *analysis.Pass, valueSpec *ast.ValueSpec,
 	}
 }
 
-var directiveRegex = regexp.MustCompile(`^\s*#constructor\[([^\]\r\n]+)\]\s*$`)
+var directiveRegex = regexp.MustCompile(`#constructor\[([^\]\r\n]+)\]`)
 
-func parseDoc(doc string) string {
-	if doc == "" {
+func constructorNameFromDocLine(docLine string) string {
+	docLine = strings.TrimPrefix(docLine, "// ")
+	docLine = strings.TrimSpace(docLine)
+	if docLine == "" {
 		return ""
 	}
-	doc = strings.TrimPrefix(doc, "// ")
 
-	for line := range strings.SplitSeq(doc, "\n") {
-		m := directiveRegex.FindStringSubmatch(line)
-		if len(m) != 2 {
-			continue
-		}
-
-		constructorName := m[1]
-
-		return constructorName
+	m := directiveRegex.FindStringSubmatch(docLine)
+	if len(m) != 2 {
+		return ""
 	}
 
-	return ""
+	constructorName := m[1]
+
+	return constructorName
 }
 
 func typeIdent(expr ast.Expr) *ast.Ident {
