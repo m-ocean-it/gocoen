@@ -43,7 +43,7 @@ Run the checks:
 gocoen ./...
 ```
 
-If there is initialization of a struct for which a constructor must be used, you'll get a warning like this: `"Foo" must be constructed with "NewFoo"`.
+If there is initialization of a type for which a constructor must be used, you'll get a warning like this: `"Foo" must be constructed with "NewFoo"`.
 
 If the directive specifies a non-existing or in some way invalid constructor, you'll get a separate warning.
 
