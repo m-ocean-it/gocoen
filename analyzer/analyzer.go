@@ -286,7 +286,7 @@ func (l *linter) processCallExpr(pass *analysis.Pass, callExpr *ast.CallExpr, in
 		return
 	}
 
-	if fn.Name != "new" {
+	if fn.Name != "new" && fn.Name != "make" {
 		return
 	}
 

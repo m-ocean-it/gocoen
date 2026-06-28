@@ -106,7 +106,7 @@ type TypeWithMultipleConstructors map[string]map[string]int // want TypeWithMult
 var (
 	x  = NewX()
 	y  = NewY()
-	z  = make(TypeWithMultipleConstructors) // TODO: detect make() usage.
+	z  = make(TypeWithMultipleConstructors) // want `"TypeWithMultipleConstructors" must be constructed with one of these constructors: "NewX", "NewY"`
 	xx TypeWithMultipleConstructors         // want `"TypeWithMultipleConstructors" must be constructed with one of these constructors: "NewX", "NewY"`
 	yy = TypeWithMultipleConstructors{}     // want `"TypeWithMultipleConstructors" must be constructed with one of these constructors: "NewX", "NewY"`
 )
